@@ -4,6 +4,7 @@ import numpy as np
 import re
 import string
 import tqdm
+import pickle
 
 # Generates skip-gram pairs with negative sampling for a list of sequences
 # (int-encoded sentences) based on window size, number of negative samples
@@ -53,154 +54,190 @@ def generate_training_data(sequences, window_size, num_ns, vocab_size, seed):
 
   return targets, contexts, labels
 
-df_headlines = pd.read_csv('data/abcnews-date-text.csv') # load csv into pandas DataFrame
-print(df_headlines.head(5))
-print()
-
-df_headlines['publish_date'] = df_headlines['publish_date'].astype(str) # change type of publish_date column to extract year
-
-df_headlines['year'] = df_headlines['publish_date'].str[:4] # extract year from publish_date column
-print(df_headlines.head(5))
-print()
-
-# Tokenize headlines using tf.keras.preprocessing.text.Tokenizer
-tokenizer = tf.keras.preprocessing.text.Tokenizer()
-tokenizer.fit_on_texts(df_headlines['headline_text'])
-max_length = max([len(sequence) for sequence in tokenizer.texts_to_sequences(df_headlines['headline_text'].values)])
-
-print(f"The maximum headline length is {max_length} words.") # MAX = 15 words
-
-word_counts = tokenizer.word_counts
-
-# Compute the average length of headlines (to help with defining the sequence length later)
-num_headlines = len(df_headlines)
-num_words = sum(word_counts.values())
-avg_length = num_words/num_headlines
-
-print(f'Average headline length: {avg_length:.2f} words') # AVG = 6.56 words
-print()
-
-headlines_by_year = df_headlines.groupby('year')['headline_text'].apply(list) # group headlines by year
-# for each year, we have a list of headlines
-print(headlines_by_year.head(5))
-print()
-
-# print the first 10 headlines
-for year, headlines in headlines_by_year.items():
-    print(f'Year: {year}')
-    for index, headline in enumerate(headlines):
-        if index < 5:
-          print(headline)
-    print()
-
-# Loop through headlines and write them to a txt file
-  # will have a txt file for each year named year_headlines (e.g. 2003_headlines)
-
-for year, headlines in headlines_by_year.items():
-    filename = f'data/{year}_headlines.txt'
-    with open(filename, 'w') as f:
-        for headline in headlines:
-            f.write(headline + '\n')
-
-
-text_ds_dict = {}
-
-for year in headlines_by_year.keys():
-    filename = f'data/{year}_headlines.txt' # get the corresponding file name based on the year
-    # Use the non empty lines to construct a tf.data.TextLineDataset object for the next steps
-    text_ds = tf.data.TextLineDataset(filename).filter(lambda x: tf.cast(tf.strings.length(x), bool)) # filters out empty lines from dataset
-    text_ds_dict[f'{year}'] = text_ds # add the text dataset to the dict
-
-# test the function above works correctly
-# text_ds_2003 = text_ds_dict['2003_text_ds']
-# for i, line in enumerate(text_ds_2003):
-#     if i < 5:
-#       print(line)
-
 # Custom standardization function to lowercase the text and remove punctuation
 def custom_standardization(input_data):
     lowercase = tf.strings.lower(input_data)
     return tf.strings.regex_replace(lowercase, '[%s]' % re.escape(string.punctuation), '')
 
-vocab_size = 10000 # larger vocab size the better, if not, then too many UNKs in my opinion
-sequence_length = 15 # Using max headline length
+def run_preprocess():
+  df_headlines = pd.read_csv('data/abcnews-date-text.csv') # load csv into pandas DataFrame
+  print(df_headlines.head(5))
+  print()
 
-vectorize_layer_dict = {}
+  df_headlines['publish_date'] = df_headlines['publish_date'].astype(str) # change type of publish_date column to extract year
 
-for year in headlines_by_year.keys():
-    # vectorize_layer for each
-    vectorize_layer_dict[f'{year}'] = tf.keras.layers.TextVectorization(
-        standardize = custom_standardization,
-        max_tokens = vocab_size,
-        output_mode = 'int',
-        output_sequence_length=sequence_length,
-      )
+  df_headlines['year'] = df_headlines['publish_date'].str[:4] # extract year from publish_date column
+  print(df_headlines.head(5))
+  print()
 
-text_vector_ds_dict = {}
-sequences_dict = {}
+  # Tokenize headlines using tf.keras.preprocessing.text.Tokenizer
+  tokenizer = tf.keras.preprocessing.text.Tokenizer()
+  tokenizer.fit_on_texts(df_headlines['headline_text'])
+  max_length = max([len(sequence) for sequence in tokenizer.texts_to_sequences(df_headlines['headline_text'].values)])
 
-# Loop through each TextLineDataset and TextVectorization layer and adapt the layer to the dataset
-for year, text_ds, vectorize_layer in zip(text_ds_dict.keys(), text_ds_dict.values(), vectorize_layer_dict.values()):
-    vectorize_layer.adapt(text_ds.batch(1024)) # BATCH SIZE ?
+  print(f"The maximum headline length is {max_length} words.") # MAX = 15 words
 
-    # Print vocab for each year sorted (descending by frequency)
-    inverse_vocab = vectorize_layer.get_vocabulary()
-    print('20 most common words in: ')
-    print(f'{year}: ', inverse_vocab[:20])
-    print()
+  word_counts = tokenizer.word_counts
 
-    # Vectorize the data in each text_ds (not too sure what this does but I'm following the tf docs)
-    text_vector_ds = text_ds.batch(1024).prefetch(tf.data.AUTOTUNE).map(vectorize_layer).unbatch()
-    text_vector_ds_dict[f'{year}'] = text_vector_ds
+  # Compute the average length of headlines (to help with defining the sequence length later)
+  num_headlines = len(df_headlines)
+  num_words = sum(word_counts.values())
+  avg_length = num_words/num_headlines
 
-    # We now have a tf.data.Dataset of integer encoded sentences
-    # To prepare the dataset for training a word2vec model, flatten them into a list of sentence vector sequences
-       # To iterate over each sentence in data set during training
+  print(f'Average headline length: {avg_length:.2f} words') # AVG = 6.56 words
+  print()
 
-    sequences = list(text_vector_ds.as_numpy_iterator())
-    sequences_dict[f'{year}'] = sequences
-    # print(len(sequences))
-    print("Few examples from sequences: ")
-    for seq in sequences[:5]:
-      print(f"{seq} => {[inverse_vocab[i] for i in seq]}")
-    print()
+  headlines_by_year = df_headlines.groupby('year')['headline_text'].apply(list) # group headlines by year
+  # for each year, we have a list of headlines
+  print(headlines_by_year.head(5))
+  print()
+  
+  vocab_size = 10000 # larger vocab size the better, if not, then too many UNKs in my opinion
+  sequence_length = 15 # Using max headline length
+  
+  vectorize_layer_full = tf.keras.layers.TextVectorization(
+    standardize=custom_standardization,
+    max_tokens=vocab_size,
+    output_mode='int',
+    output_sequence_length=sequence_length
+  )
+  
+  filename = f'data/all_headlines.txt'
+  with open(filename, 'w') as f:
+      for headline in df_headlines['headline_text']:
+        f.write(headline + '\n')
+  f.close()
+  
+  # Use the non empty lines to construct a tf.data.TextLineDataset object for the next steps
+  text_ds_full = tf.data.TextLineDataset(filename).filter(lambda x: tf.cast(tf.strings.length(x), bool)) # filters out empty lines from dataset
+  
+  vectorize_layer_full.adapt(text_ds_full.batch(1024))
+  
+  filehandler = open('data/vectorize_layer_full.pkl', 'wb') 
+  # pickle.dump(vectorize_layer_full, filehandler)
+  pickle.dump({'config': vectorize_layer_full.get_config(),
+             'weights': vectorize_layer_full.get_weights()}
+            , filehandler)
 
-# Call generate_training_data() to generate training examples for the word2vec model
-# The function iterates over each word from each sequence to collect positive and negative context words
+  # print the first 10 headlines
+  for year, headlines in headlines_by_year.items():
+      print(f'Year: {year}')
+      for index, headline in enumerate(headlines):
+          if index < 5:
+            print(headline)
+      print()
 
-# Loop through sequences for each year
-all_targets = []
-all_contexts = []
-all_labels = []
-for year, sequences in sequences_dict.items():
-  targets, contexts, labels = generate_training_data(
-    sequences=sequences,
-    window_size=2,
-    num_ns=4,
-    vocab_size=vocab_size,
-    seed=42) # SEED = 42?
+  # Loop through headlines and write them to a txt file
+    # will have a txt file for each year named year_headlines (e.g. 2003_headlines)
 
-  targets = np.array(targets)
-  contexts = np.array(contexts)
-  labels = np.array(labels)
+  for year, headlines in headlines_by_year.items():
+      filename = f'data/{year}_headlines.txt'
+      with open(filename, 'w') as f:
+          for headline in headlines:
+              f.write(headline + '\n')
+      f.close()
 
-  all_targets.append(targets)
-  all_contexts.append(contexts)
-  all_labels.append(labels)
 
-  ftargets = f'data_preprocessed/{year}_targets.txt'
-  fcontexts = f'data_preprocessed/{year}_contexts.txt'
-  flabels = f'data_preprocessed/{year}_labels.txt'
+  text_ds_dict = {}
 
-  np.savetxt(ftargets, targets)
-  np.savetxt(fcontexts, contexts)
-  np.savetxt(flabels, labels)
+  for year in headlines_by_year.keys():
+      filename = f'data/{year}_headlines.txt' # get the corresponding file name based on the year
+      # Use the non empty lines to construct a tf.data.TextLineDataset object for the next steps
+      text_ds = tf.data.TextLineDataset(filename).filter(lambda x: tf.cast(tf.strings.length(x), bool)) # filters out empty lines from dataset
+      text_ds_dict[f'{year}'] = text_ds # add the text dataset to the dict
 
-  print('')
-  print(f"targets.shape: {targets.shape}")
-  print(f"contexts.shape: {contexts.shape}")
-  print(f"labels.shape: {labels.shape}")
+  # test the function above works correctly
+  # text_ds_2003 = text_ds_dict['2003_text_ds']
+  # for i, line in enumerate(text_ds_2003):
+  #     if i < 5:
+  #       print(line)
 
-np.savetxt('data_preprocessed/all_targets.txt', np.concatenate(all_targets, axis=0))
-np.savetxt('data_preprocessed/all_contexts.txt', np.concatenate(all_contexts, axis=0))
-np.savetxt('data_preprocessed/all_labels.txt', np.concatenate(all_labels, axis=0))
+  vectorize_layer_dict = {}
+
+  for year in headlines_by_year.keys():
+      # vectorize_layer for each
+      vectorize_layer_dict[f'{year}'] = tf.keras.layers.TextVectorization(
+          standardize = custom_standardization,
+          max_tokens = vocab_size,
+          output_mode = 'int',
+          output_sequence_length=sequence_length,
+        )
+
+  text_vector_ds_dict = {}
+  sequences_dict = {}
+
+  # Loop through each TextLineDataset and TextVectorization layer and adapt the layer to the dataset
+  for year, text_ds, vectorize_layer in zip(text_ds_dict.keys(), text_ds_dict.values(), vectorize_layer_dict.values()):
+      vectorize_layer.adapt(text_ds.batch(1024)) # BATCH SIZE ?
+      
+      filehandler = open(f'data/{year}_vectorize_layer.pkl' , 'wb') 
+      # pickle.dump(vectorize_layer, filehandler)
+      pickle.dump({'config': vectorize_layer.get_config(),
+             'weights': vectorize_layer.get_weights()}
+            , filehandler)
+
+      # Print vocab for each year sorted (descending by frequency)
+      inverse_vocab = vectorize_layer.get_vocabulary()
+      print('20 most common words in: ')
+      print(f'{year}: ', inverse_vocab[:20])
+      print()
+
+      # Vectorize the data in each text_ds (not too sure what this does but I'm following the tf docs)
+      text_vector_ds = text_ds.batch(1024).prefetch(tf.data.AUTOTUNE).map(vectorize_layer).unbatch()
+      text_vector_ds_dict[f'{year}'] = text_vector_ds
+
+      # We now have a tf.data.Dataset of integer encoded sentences
+      # To prepare the dataset for training a word2vec model, flatten them into a list of sentence vector sequences
+        # To iterate over each sentence in data set during training
+
+      sequences = list(text_vector_ds.as_numpy_iterator())
+      sequences_dict[f'{year}'] = sequences
+      # print(len(sequences))
+      print("Few examples from sequences: ")
+      for seq in sequences[:5]:
+        print(f"{seq} => {[inverse_vocab[i] for i in seq]}")
+      print()
+
+  # Call generate_training_data() to generate training examples for the word2vec model
+  # The function iterates over each word from each sequence to collect positive and negative context words
+
+  # Loop through sequences for each year
+  all_targets = []
+  all_contexts = []
+  all_labels = []
+  for year, sequences in sequences_dict.items():
+    targets, contexts, labels = generate_training_data(
+      sequences=sequences,
+      window_size=2,
+      num_ns=4,
+      vocab_size=vocab_size,
+      seed=42) # SEED = 42?
+
+    targets = np.array(targets)
+    contexts = np.array(contexts)
+    labels = np.array(labels)
+
+    all_targets.append(targets)
+    all_contexts.append(contexts)
+    all_labels.append(labels)
+
+    ftargets = f'data_preprocessed/{year}_targets.txt'
+    fcontexts = f'data_preprocessed/{year}_contexts.txt'
+    flabels = f'data_preprocessed/{year}_labels.txt'
+
+    np.savetxt(ftargets, targets)
+    np.savetxt(fcontexts, contexts)
+    np.savetxt(flabels, labels)
+
+    print('')
+    print(f"targets.shape: {targets.shape}")
+    print(f"contexts.shape: {contexts.shape}")
+    print(f"labels.shape: {labels.shape}")
+
+  np.savetxt('data_preprocessed/all_targets.txt', np.concatenate(all_targets, axis=0))
+  np.savetxt('data_preprocessed/all_contexts.txt', np.concatenate(all_contexts, axis=0))
+  np.savetxt('data_preprocessed/all_labels.txt', np.concatenate(all_labels, axis=0))
+  
+  return vectorize_layer_dict, vectorize_layer_full
+  
+run_preprocess()
