@@ -7,22 +7,34 @@ import numpy as np
 
 import tensorflow as tf
 from tensorflow.keras import layers
+import pickle
+import os
+
+BATCH_SIZE = 1024
+BUFFER_SIZE = 10000
+
+# Custom standardization function to lowercase the text and remove punctuation
+def custom_standardization(input_data):
+    lowercase = tf.strings.lower(input_data)
+    return tf.strings.regex_replace(lowercase, '[%s]' % re.escape(string.punctuation), '')
 
 SEED = 42
 AUTOTUNE = tf.data.AUTOTUNE
-
+num_ns = 4
+embedding_dim = 128
 targets = np.loadtxt('data_preprocessed/all_targets.txt')
 contexts = np.loadtxt('data_preprocessed/all_contexts.txt')
 labels = np.loadtxt('data_preprocessed/all_labels.txt')
 
-BATCH_SIZE = 1024
-BUFFER_SIZE = 10000
 dataset = tf.data.Dataset.from_tensor_slices(((targets, contexts), labels))
 dataset = dataset.shuffle(BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True)
 
 dataset = dataset.cache().prefetch(buffer_size=AUTOTUNE)
 
 num_ns = 4 #GRI default: check what this does
+
+if not os.path.exists('./vectors/'):
+    os.system('mkdir vectors')
 
 class Word2Vec(tf.keras.Model):
   def __init__(self, vocab_size, embedding_dim):
@@ -57,4 +69,24 @@ word2vec.compile(optimizer='adam',
                  loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
                  metrics=['accuracy'])
 
-word2vec.fit(dataset, epochs=20)
+word2vec.fit(dataset, epochs=1)
+
+from_disk = pickle.load(open(f'data/vectorize_layer_full.pkl', "rb"))
+vectorize_layer = tf.keras.layers.TextVectorization.from_config(from_disk['config'])
+vectorize_layer.adapt(tf.data.Dataset.from_tensor_slices(["xyz"])) # dummy for initialization
+vectorize_layer.set_weights(from_disk['weights'])
+
+weights = word2vec.get_layer('w2v_embedding').get_weights()[0]
+vocab = vectorize_layer.get_vocabulary()
+
+out_v = io.open(f'vectors/all_vectors.tsv', 'w', encoding='utf-8')
+out_m = io.open(f'vectors/all_metadata.tsv', 'w', encoding='utf-8')
+
+for index, word in enumerate(vocab):
+    if index == 0:
+        continue  # skip 0, it's padding.
+    vec = weights[index]
+    out_v.write('\t'.join([str(x) for x in vec]) + "\n")
+    out_m.write(word + "\n")
+out_v.close()
+out_m.close()

@@ -9,9 +9,9 @@ import tensorflow as tf
 from tensorflow.keras import layers
 import pickle
 import os
-# from preprocess import custom_standardization
 
-training = True
+BATCH_SIZE = 1024
+BUFFER_SIZE = 10000
 
 # Custom standardization function to lowercase the text and remove punctuation
 def custom_standardization(input_data):
@@ -72,11 +72,11 @@ for i, year in enumerate(years):
                      loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
                      metrics=['accuracy'])
 
-    word2vec.fit(dataset, epochs=20)
+    word2vec.fit(dataset, epochs=1)
 
     from_disk = pickle.load(open(f'data/{year}_vectorize_layer.pkl', "rb"))
     vectorize_layer = tf.keras.layers.TextVectorization.from_config(from_disk['config'])
-    vectorize_layer.adapt(tf.data.Dataset.from_tensor_slices(["xyz"]))
+    vectorize_layer.adapt(tf.data.Dataset.from_tensor_slices(["xyz"])) # dummy for initialization
     vectorize_layer.set_weights(from_disk['weights'])
 
     weights = word2vec.get_layer('w2v_embedding').get_weights()[0]
