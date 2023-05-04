@@ -2,6 +2,7 @@ import io
 import re
 import string
 import tqdm
+import matplotlib.pyplot as plt
 
 import numpy as np
 
@@ -20,8 +21,15 @@ def custom_standardization(input_data):
 
 SEED = 42
 AUTOTUNE = tf.data.AUTOTUNE
+embedding_dim=256
 num_ns = 4
-embedding_dim = 128
+
+# FOR TESTING PURPOSES
+#embedding_dims = [16, 32, 64, 128, 256, 512] 
+#num_ns_vals = [2, 3, 4, 5, 6, 7, 8]
+#loss_values = np.zeros((len(embedding_dims), len(num_ns_vals)))
+###
+
 targets = np.loadtxt('data_preprocessed/all_targets.txt')
 contexts = np.loadtxt('data_preprocessed/all_contexts.txt')
 labels = np.loadtxt('data_preprocessed/all_labels.txt')
@@ -31,13 +39,12 @@ dataset = dataset.shuffle(BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True)
 
 dataset = dataset.cache().prefetch(buffer_size=AUTOTUNE)
 
-num_ns = 4 #GRI default: check what this does
 
 if not os.path.exists('./vectors/'):
     os.system('mkdir vectors')
 
 class Word2Vec(tf.keras.Model):
-  def __init__(self, vocab_size, embedding_dim):
+  def __init__(self, vocab_size, embedding_dim, num_ns):
     super(Word2Vec, self).__init__()
     self.target_embedding = layers.Embedding(vocab_size,
                                       embedding_dim,
@@ -62,14 +69,18 @@ class Word2Vec(tf.keras.Model):
     # dots: (batch, context)
     return dots
 
-embedding_dim = 128
-vocab_size = 10000
-word2vec = Word2Vec(vocab_size, embedding_dim)
-word2vec.compile(optimizer='adam',
-                 loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
-                 metrics=['accuracy'])
 
-word2vec.fit(dataset, epochs=1)
+#for j, num_ns_val in enumerate(num_ns_vals): 
+vocab_size = 4096
+word2vec = Word2Vec(vocab_size, embedding_dim, num_ns)
+word2vec.compile(optimizer='adam',
+                loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
+                metrics=['accuracy'])
+
+history = word2vec.fit(dataset, epochs=20)
+loss = history.history['loss'][-1]
+# loss_values[i, j] = loss
+print(f"Embedding Dim: {embedding_dim}, Num_ns: {num_ns}, Loss: {loss:.4f}")
 
 from_disk = pickle.load(open(f'data/vectorize_layer_full.pkl', "rb"))
 vectorize_layer = tf.keras.layers.TextVectorization.from_config(from_disk['config'])
@@ -90,3 +101,24 @@ for index, word in enumerate(vocab):
     out_m.write(word + "\n")
 out_v.close()
 out_m.close()
+
+# Plot the loss values as a heatmap
+# fig, ax = plt.subplots()
+# im = ax.imshow(loss_values, cmap='viridis')
+# ax.set_xticks(np.arange(len(num_ns_vals)))
+# ax.set_yticks(np.arange(len(embedding_dims)))
+# ax.set_xticklabels(num_ns_vals)
+# ax.set_yticklabels(embedding_dims)
+# ax.set_xlabel('num_ns_val')
+# ax.set_ylabel('embedding_dim')
+
+# # Add colorbar
+# cbar = ax.figure.colorbar(im, ax=ax)
+# cbar.ax.set_ylabel('Loss', rotation=-90, va="bottom")
+
+# # Loop over data dimensions and create text annotations.
+# for i in range(len(embedding_dims)):
+#     for j in range(len(num_ns_vals)):
+#         text = ax.text(j, i, '{:.2f}'.format(loss_values[i, j]), ha="center", va="center", color="w")
+
+# plt.show()

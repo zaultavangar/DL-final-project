@@ -21,14 +21,14 @@ def custom_standardization(input_data):
 SEED = 42
 AUTOTUNE = tf.data.AUTOTUNE
 num_ns = 4 #GRI default: check what this does
-embedding_dim = 16
-vocab_size = 10000
+embedding_dim = 256
+vocab_size = 4096
 
 BUFFER_SIZE = 10000
 BATCH_SIZE = 1024
 
 class Word2Vec(tf.keras.Model):
-  def __init__(self, vocab_size, embedding_dim):
+  def __init__(self, vocab_size, embedding_dim, num_ns):
     super(Word2Vec, self).__init__()
     self.target_embedding = layers.Embedding(vocab_size,
                                       embedding_dim,
@@ -58,41 +58,44 @@ if not os.path.exists('./vectors/'):
 
 years = np.arange(2003, 2022, 1)
 
+
 for i, year in enumerate(years):
-    targets = f'data_preprocessed/{year}_targets.txt'
-    contexts = f'data_preprocessed/{year}_contexts.txt'
-    labels = f'data_preprocessed/{year}_labels.txt'
-    targets = np.loadtxt(targets)
-    contexts = np.loadtxt(contexts)
-    labels = np.loadtxt(labels)
+  targets = f'data_preprocessed/{year}_targets.txt'
+  contexts = f'data_preprocessed/{year}_contexts.txt'
+  labels = f'data_preprocessed/{year}_labels.txt'
+  targets = np.loadtxt(targets)
+  contexts = np.loadtxt(contexts)
+  labels = np.loadtxt(labels)
 
-    dataset = tf.data.Dataset.from_tensor_slices(((targets, contexts), labels))
-    dataset = dataset.shuffle(BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True)
-    dataset = dataset.cache().prefetch(buffer_size=AUTOTUNE)
+  dataset = tf.data.Dataset.from_tensor_slices(((targets, contexts), labels))
+  dataset = dataset.shuffle(BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True)
+  dataset = dataset.cache().prefetch(buffer_size=AUTOTUNE)
 
-    word2vec = Word2Vec(vocab_size, embedding_dim)
-    word2vec.compile(optimizer='adam',
-                     loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
-                     metrics=['accuracy'])
+  word2vec = Word2Vec(vocab_size, embedding_dim, num_ns)
+  word2vec.compile(optimizer='adam',
+                  loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
+                  metrics=['accuracy'])
 
-    word2vec.fit(dataset, epochs=1)
+  history = word2vec.fit(dataset, epochs=20)
+  loss = history.history['loss'][-1]
+  print(f"{year}: Loss = {loss:.4f}")
 
-    from_disk = pickle.load(open(f'data/{year}_vectorize_layer.pkl', "rb"))
-    vectorize_layer = tf.keras.layers.TextVectorization.from_config(from_disk['config'])
-    vectorize_layer.adapt(tf.data.Dataset.from_tensor_slices(["xyz"])) # dummy for initialization
-    vectorize_layer.set_weights(from_disk['weights'])
+  from_disk = pickle.load(open(f'data/{year}_vectorize_layer.pkl', "rb"))
+  vectorize_layer = tf.keras.layers.TextVectorization.from_config(from_disk['config'])
+  vectorize_layer.adapt(tf.data.Dataset.from_tensor_slices(["xyz"])) # dummy for initialization
+  vectorize_layer.set_weights(from_disk['weights'])
 
-    weights = word2vec.get_layer('w2v_embedding').get_weights()[0]
-    vocab = vectorize_layer.get_vocabulary()
+  weights = word2vec.get_layer('w2v_embedding').get_weights()[0]
+  vocab = vectorize_layer.get_vocabulary()
 
-    out_v = io.open(f'vectors/{year}_vectors.tsv', 'w', encoding='utf-8')
-    out_m = io.open(f'vectors/{year}_metadata.tsv', 'w', encoding='utf-8')
+  out_v = io.open(f'vectors/{year}_vectors.tsv', 'w', encoding='utf-8')
+  out_m = io.open(f'vectors/{year}_metadata.tsv', 'w', encoding='utf-8')
 
-    for index, word in enumerate(vocab):
-        if index == 0:
-            continue  # skip 0, it's padding.
-        vec = weights[index]
-        out_v.write('\t'.join([str(x) for x in vec]) + "\n")
-        out_m.write(word + "\n")
-    out_v.close()
-    out_m.close()
+  for index, word in enumerate(vocab):
+      if index == 0:
+          continue  # skip 0, it's padding.
+      vec = weights[index]
+      out_v.write('\t'.join([str(x) for x in vec]) + "\n")
+      out_m.write(word + "\n")
+  out_v.close()
+  out_m.close()
