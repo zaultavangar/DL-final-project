@@ -21,8 +21,11 @@ def custom_standardization(input_data):
 SEED = 42
 AUTOTUNE = tf.data.AUTOTUNE
 num_ns = 4 #GRI default: check what this does
-embedding_dim = 128
+embedding_dim = 16
 vocab_size = 10000
+
+BUFFER_SIZE = 10000
+BATCH_SIZE = 1024
 
 class Word2Vec(tf.keras.Model):
   def __init__(self, vocab_size, embedding_dim):
