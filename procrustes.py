@@ -3,7 +3,7 @@ from scipy.linalg import orthogonal_procrustes as op
 
 years = np.arange(2003, 2022, 1)
 
-def get_rotations(embedding_dim=128, vocab_size=9999):
+def get_rotations(embedding_dim=256, vocab_size=4096):
     W_ref = np.loadtxt('vectors/all_vectors.tsv').T[:,:vocab_size] # shape after transpose = (embedding_dim, vocab_size)
 
     W_all = np.zeros((len(years), W_ref.shape[0], W_ref.shape[1])) # shape = (years, embedding_dim, vocab_size)
@@ -18,5 +18,6 @@ def get_rotations(embedding_dim=128, vocab_size=9999):
 
     return W_all.T # shape after transpose = (years, vocab_size, embedding_dim)
 
-get_rotations(vocab_size=4096)
+rotations = get_rotations(vocab_size=4096)
+np.save('vectors/embeddings_rotated.npy', rotations) # Save the rotations to a file
 print("Done!")

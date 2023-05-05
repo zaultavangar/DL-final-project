@@ -92,7 +92,7 @@ def run_preprocess():
   print(headlines_by_year.head(5))
   print()
   
-  vocab_size = 10000 # larger vocab size the better, if not, then too many UNKs in my opinion
+  vocab_size = 4096 # larger vocab size the better, if not, then too many UNKs in my opinion
   sequence_length = 15 # Using max headline length
   
   vectorize_layer_full = tf.keras.layers.TextVectorization(
@@ -168,8 +168,8 @@ def run_preprocess():
 
   # Loop through each TextLineDataset and TextVectorization layer and adapt the layer to the dataset
   for year, text_ds, vectorize_layer in zip(text_ds_dict.keys(), text_ds_dict.values(), vectorize_layer_dict.values()):
-      if year != "2020" and year != "2021":
-        continue
+      # if year != "2020" and year != "2021":
+      #   continue
       
       vectorize_layer.adapt(text_ds.batch(1024)) # BATCH SIZE ?
       

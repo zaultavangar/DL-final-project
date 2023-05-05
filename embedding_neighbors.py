@@ -20,21 +20,38 @@ def find_similar(vector_matrix, input_vector, num_examples):
 
 
 def find_similar_words(word_of_interest, year, num_examples=10):
+    procrustes_matrix = np.load('vectors/embeddings_rotated.npy') # shape: years, vocab_size_embedding_size
+    #print('procrustes matrix shape: ', procrustes_matrix.shape) # shape is (4095, 256, 19)
+    procrustes_matrix = np.transpose(procrustes_matrix, (2, 0, 1)) # convert shape to 19, 4096, 256
+    #print('procrustes matrix shape: ', procrustes_matrix.shape) # shape is (19, 4096, 256)
+
     year_file = f'vectors/{year}_vectors.tsv'
     embedding_mat = np.loadtxt(year_file)
 
+    #print('shape embedding_mat: ', embedding_mat.shape)
+
     year_meta_file = f'vectors/{year}_metadata.tsv'
     word_mat = np.loadtxt(year_meta_file, dtype=str)
+
+    #print('shape word_mat: ', word_mat.shape)
 
     index_of_interest = np.where(word_mat == word_of_interest)[0][0]
     print(index_of_interest)
 
     similar_indices = find_similar(embedding_mat, [embedding_mat[index_of_interest]], num_examples)
+    embedding_mat_rotated = procrustes_matrix[year-2003]
 
-    print("Words similar to", word_mat[index_of_interest], "in", year)
+    similar_indices_rotated = find_similar(embedding_mat_rotated, [embedding_mat_rotated[index_of_interest]], num_examples) # rotated
+
+    print("Words similar to", word_mat[index_of_interest], "in", year, '(regular embeddings)')
     for i in similar_indices:
         print(' -', word_mat[i])
 
-find_similar_words("police", 2019)
+    print("Words similar to", word_mat[index_of_interest], "in", year, '(rotated embeddings)')
+    for i in similar_indices_rotated:
+        print(' -', word_mat[i])
+  
+
+find_similar_words("epstein", 2020)
 
 
