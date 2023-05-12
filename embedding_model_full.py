@@ -25,10 +25,9 @@ embedding_dim=256
 num_ns = 4
 
 # FOR TESTING PURPOSES
-#embedding_dims = [16, 32, 64, 128, 256, 512] 
-#num_ns_vals = [2, 3, 4, 5, 6, 7, 8]
-#loss_values = np.zeros((len(embedding_dims), len(num_ns_vals)))
-###
+# embedding_dims = [16, 32, 64, 128, 256, 512] 
+loss_values = []
+##
 
 targets = np.loadtxt('data_preprocessed/all_targets.txt')
 contexts = np.loadtxt('data_preprocessed/all_contexts.txt')
@@ -70,17 +69,17 @@ class Word2Vec(tf.keras.Model):
     return dots
 
 
-#for j, num_ns_val in enumerate(num_ns_vals): 
 vocab_size = 4096
 word2vec = Word2Vec(vocab_size, embedding_dim, num_ns)
 word2vec.compile(optimizer='adam',
                 loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
                 metrics=['accuracy'])
 
-history = word2vec.fit(dataset, epochs=20)
+history = word2vec.fit(dataset, epochs=10)
 loss = history.history['loss'][-1]
-# loss_values[i, j] = loss
-print(f"Embedding Dim: {embedding_dim}, Num_ns: {num_ns}, Loss: {loss:.4f}")
+loss_values.append(loss)
+
+print(f' Loss: {loss:.4f}')
 
 from_disk = pickle.load(open(f'data/vectorize_layer_full.pkl', "rb"))
 vectorize_layer = tf.keras.layers.TextVectorization.from_config(from_disk['config'])
@@ -102,23 +101,16 @@ for index, word in enumerate(vocab):
 out_v.close()
 out_m.close()
 
-# Plot the loss values as a heatmap
-# fig, ax = plt.subplots()
-# im = ax.imshow(loss_values, cmap='viridis')
-# ax.set_xticks(np.arange(len(num_ns_vals)))
-# ax.set_yticks(np.arange(len(embedding_dims)))
-# ax.set_xticklabels(num_ns_vals)
-# ax.set_yticklabels(embedding_dims)
-# ax.set_xlabel('num_ns_val')
-# ax.set_ylabel('embedding_dim')
+# FOR PLOTTING
 
-# # Add colorbar
-# cbar = ax.figure.colorbar(im, ax=ax)
-# cbar.ax.set_ylabel('Loss', rotation=-90, va="bottom")
+# plt.plot(embedding_dims, loss_values)
 
-# # Loop over data dimensions and create text annotations.
-# for i in range(len(embedding_dims)):
-#     for j in range(len(num_ns_vals)):
-#         text = ax.text(j, i, '{:.2f}'.format(loss_values[i, j]), ha="center", va="center", color="w")
+# # Set the title and axis labels
+# plt.title("Relationship between Embedding Dimension and Loss Value")
+# plt.xlabel("Embedding Dimension")
+# plt.ylabel("Loss")
 
+# # Show the plot
 # plt.show()
+
+
