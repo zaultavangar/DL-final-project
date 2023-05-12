@@ -101,7 +101,7 @@ for index, word in enumerate(vocab):
 out_v.close()
 out_m.close()
 
-# FOR PLOTTING
+# FOR PLOTTING EMBEDDING DIMENSION VS. LOSS
 
 # plt.plot(embedding_dims, loss_values)
 
